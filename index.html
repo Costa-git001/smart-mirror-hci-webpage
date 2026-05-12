@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Mirror Interface</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --glass: rgba(10, 18, 26, 0.52);
+      --glass-strong: rgba(8, 13, 20, 0.74);
+      --line: rgba(255, 255, 255, 0.18);
+      --text: #f6fbff;
+      --muted: #aab8c4;
+      --accent: #4fd1c5;
+      --accent-2: #f5b84b;
+      --danger: #ff7a7a;
+      --shadow: 0 18px 55px rgba(0, 0, 0, 0.34);
+      font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #060b10;
+      color: var(--text);
+    }
+
+    body {
+      min-width: 320px;
+    }
+
+    .mirror {
+      position: relative;
+      min-height: 100%;
+      isolation: isolate;
+    }
+
+    #camera {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      background: #071018;
+      z-index: -3;
+    }
+
+    .camera-fallback {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      background:
+        linear-gradient(135deg, rgba(79, 209, 197, 0.18), transparent 38%),
+        radial-gradient(circle at 75% 30%, rgba(245, 184, 75, 0.16), transparent 34%),
+        #071018;
+      z-index: -4;
+      text-align: center;
+    }
+
+    .camera-fallback p {
+      max-width: 560px;
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0.58), transparent 24%, transparent 72%, rgba(0, 0, 0, 0.62)),
+        linear-gradient(180deg, rgba(0, 0, 0, 0.52), transparent 22%, rgba(0, 0, 0, 0.66));
+    }
+
+    .shell {
+      min-height: 100vh;
+      padding: clamp(18px, 3vw, 34px);
+      display: grid;
+      grid-template-columns: minmax(220px, 310px) minmax(0, 1fr) minmax(220px, 310px);
+      grid-template-rows: auto 1fr auto;
+      gap: 18px;
+    }
+
+    .topbar,
+    .panel,
+    .controls,
+    .toast {
+      background: var(--glass);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .topbar {
+      grid-column: 1 / -1;
+      min-height: 74px;
+      border-radius: 8px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .brand {
+      min-width: 0;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(20px, 2.2vw, 32px);
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .brand p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .clock {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .clock strong {
+      display: block;
+      font-size: clamp(24px, 4vw, 44px);
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    .clock span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .left {
+      grid-column: 1;
+      grid-row: 2;
+      align-self: start;
+    }
+
+    .right {
+      grid-column: 3;
+      grid-row: 2;
+      align-self: start;
+    }
+
+    .panel {
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #dceef5;
+    }
+
+    .weather-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .temp {
+      font-size: 48px;
+      line-height: 0.95;
+      font-weight: 760;
+    }
+
+    .weather-meta,
+    .quiet {
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 14px;
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .list li {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: baseline;
+      color: #edf7fb;
+      font-size: 14px;
+    }
+
+    .list time,
+    .tag {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .metric {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.11);
+    }
+
+    .metric:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .metric b {
+      color: var(--accent-2);
+      font-size: 15px;
+    }
+
+    .headline,
+    .task,
+    .toggle-row {
+      width: 100%;
+      min-height: 40px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text);
+      text-align: left;
+      font-weight: 550;
+    }
+
+    .task.complete {
+      color: var(--muted);
+      text-decoration: line-through;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .news .list li {
+      display: block;
+    }
+
+    .reminders .task + .task,
+    .wellness .task + .task {
+      margin-top: 8px;
+    }
+
+    .controls {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+      border-radius: 8px;
+      min-height: 44px;
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+
+    button:hover,
+    button:focus-visible {
+      transform: translateY(-1px);
+      background: rgba(79, 209, 197, 0.18);
+      border-color: rgba(79, 209, 197, 0.62);
+      outline: none;
+    }
+
+    button.active {
+      background: rgba(79, 209, 197, 0.28);
+      border-color: var(--accent);
+    }
+
+    .primary {
+      background: rgba(79, 209, 197, 0.22);
+      border-color: rgba(79, 209, 197, 0.62);
+    }
+
+    .center-status {
+      grid-column: 2;
+      grid-row: 2;
+      align-self: end;
+      justify-self: center;
+      width: min(620px, 100%);
+      text-align: center;
+      padding: 18px;
+      border-radius: 8px;
+      background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.32));
+    }
+
+    .center-status p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .command {
+      margin: 0;
+      font-size: clamp(18px, 2vw, 28px);
+      font-weight: 700;
+    }
+
+    .default-time {
+      font-size: clamp(54px, 9vw, 118px);
+      line-height: 0.95;
+      font-weight: 780;
+    }
+
+    .default-date {
+      font-size: clamp(18px, 2vw, 28px);
+      color: #e7f6fb;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 84px;
+      transform: translateX(-50%);
+      max-width: min(560px, calc(100% - 28px));
+      padding: 13px 16px;
+      border-radius: 8px;
+      color: var(--text);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease, transform 180ms ease;
+      text-align: center;
+      z-index: 3;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-6px);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    body.focus-weather .agenda,
+    body.focus-weather .news,
+    body.focus-weather .wellness,
+    body.focus-weather .reminders,
+    body.focus-weather .routine,
+    body.focus-weather .smart-home,
+    body.focus-weather .assistant-panel,
+    body.focus-agenda .weather,
+    body.focus-agenda .news,
+    body.focus-agenda .wellness,
+    body.focus-agenda .reminders,
+    body.focus-agenda .routine,
+    body.focus-agenda .smart-home,
+    body.focus-agenda .assistant-panel,
+    body.focus-news .weather,
+    body.focus-news .agenda,
+    body.focus-news .wellness,
+    body.focus-news .reminders,
+    body.focus-news .routine,
+    body.focus-news .smart-home,
+    body.focus-news .assistant-panel,
+    body.focus-health .weather,
+    body.focus-health .agenda,
+    body.focus-health .news,
+    body.focus-health .reminders,
+    body.focus-health .routine,
+    body.focus-health .smart-home,
+    body.focus-health .assistant-panel,
+    body.focus-reminders .weather,
+    body.focus-reminders .agenda,
+    body.focus-reminders .news,
+    body.focus-reminders .wellness,
+    body.focus-reminders .routine,
+    body.focus-reminders .smart-home,
+    body.focus-reminders .assistant-panel,
+    body.focus-routine .weather,
+    body.focus-routine .agenda,
+    body.focus-routine .news,
+    body.focus-routine .wellness,
+    body.focus-routine .reminders,
+    body.focus-routine .smart-home,
+    body.focus-routine .assistant-panel,
+    body.focus-home .weather,
+    body.focus-home .agenda,
+    body.focus-home .news,
+    body.focus-home .wellness,
+    body.focus-home .reminders,
+    body.focus-home .routine,
+    body.focus-home .assistant-panel {
+      display: none;
+    }
+
+    @media (max-width: 860px) {
+      html,
+      body {
+        overflow: auto;
+      }
+
+      .shell {
+        min-height: 100vh;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto auto;
+        padding-bottom: 100px;
+      }
+
+      .topbar,
+      .left,
+      .right,
+      .center-status,
+      .controls {
+        grid-column: 1;
+        grid-row: auto;
+      }
+
+      .topbar {
+        align-items: flex-start;
+      }
+
+      .clock strong {
+        font-size: 28px;
+      }
+
+      .center-status {
+        order: 4;
+      }
+
+      .controls {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        z-index: 4;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .topbar {
+        flex-direction: column;
+      }
+
+      .clock {
+        text-align: left;
+      }
+
+      button {
+        flex: 1 1 132px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="mirror" aria-label="Smart mirror webpage">
+    <video id="camera" autoplay playsinline muted aria-label="Live mirrored camera view"></video>
+    <div class="camera-fallback" id="cameraFallback">
+      <p>Camera preview will appear here after permission is granted. If camera access is unavailable, the interface still demonstrates the smart mirror controls.</p>
+    </div>
+    <div class="overlay" aria-hidden="true"></div>
+
+    <section class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>Smart Mirror</h1>
+          <p>Tap a menu item or say: time, agenda, weather, news, health, reminders, routine, home, or read aloud.</p>
+        </div>
+        <div class="clock" aria-live="polite">
+          <strong id="time">--:--</strong>
+          <span id="date">Loading date</span>
+        </div>
+      </header>
+
+      <div class="stack left">
+        <article class="panel weather" data-panel="weather">
+          <h2>Weather</h2>
+          <div class="weather-main">
+            <div>
+              <div class="temp">22</div>
+              <div class="weather-meta">Nairobi<br>Cloudy</div>
+            </div>
+            <div class="weather-meta">Rain expected later<br>Hourly forecast on tap</div>
+          </div>
+        </article>
+
+        <article class="panel agenda" data-panel="agenda">
+          <h2>Agenda</h2>
+          <ul class="list">
+            <li><time>13:00</time><span>HCI Class</span></li>
+            <li><time>17:00</time><span>Football Practice</span></li>
+            <li><time>20:00</time><span>ADS CAT Revision</span></li>
+          </ul>
+        </article>
+
+        <article class="panel reminders" data-panel="reminders">
+          <h2>Reminders</h2>
+          <button type="button" class="task">Submit HCI CAT</button>
+          <button type="button" class="task">Revise for ADS CAT</button>
+          <button type="button" class="task">Charge laptop</button>
+        </article>
+      </div>
+
+      <section class="center-status" aria-live="polite">
+        <h2 class="command" id="commandTitle">Mirror ready</h2>
+        <p id="commandText">Use the camera as the mirror surface while information floats at the edges to avoid covering the user's face.</p>
+      </section>
+
+      <div class="stack right">
+        <article class="panel news" data-panel="news">
+          <h2>News</h2>
+          <ul class="list">
+            <li><button type="button" class="headline">New AI tools launched</button></li>
+            <li><button type="button" class="headline">Country's updated morning run in Nairobi</button></li>
+            <li><button type="button" class="headline">Sports results today</button></li>
+          </ul>
+        </article>
+
+        <article class="panel wellness" data-panel="health">
+          <h2>Health</h2>
+          <div class="metric"><span>Water</span><b id="waterCount">4 / 8</b></div>
+          <div class="metric"><span>Steps</span><b>3,200</b></div>
+          <div class="metric"><span>Sleep</span><b>6h 45m</b></div>
+          <div class="metric"><span>Mood</span><b id="moodValue">Good</b></div>
+          <button type="button" class="task" data-health="water">Add water</button>
+          <button type="button" class="task" data-health="mood">Change mood</button>
+        </article>
+
+        <article class="panel routine" data-panel="routine">
+          <h2>Morning Routine</h2>
+          <ul class="list">
+            <li><span class="tag">Done</span><span>Brush teeth</span></li>
+            <li><span class="tag">Done</span><span>Take breakfast</span></li>
+            <li><span class="tag">Next</span><span>Pack laptop</span></li>
+            <li><span class="tag">07:30</span><span>Leave by 7:30</span></li>
+          </ul>
+        </article>
+
+        <article class="panel smart-home" data-panel="home">
+          <h2>Smart Home</h2>
+          <button type="button" class="toggle-row" data-device="Lights"><span>Lights</span><b>ON</b></button>
+          <button type="button" class="toggle-row" data-device="Fan"><span>Fan</span><b>OFF</b></button>
+          <div class="metric"><span>Room Temp</span><b>24C</b></div>
+        </article>
+
+        <article class="panel assistant-panel">
+          <h2>Assistant</h2>
+          <p class="quiet" id="assistantText">Tap Listen, then speak a command. The mirror can also answer using speech output.</p>
+        </article>
+      </div>
+
+      <nav class="controls" aria-label="Smart mirror tap controls">
+        <button type="button" class="primary" data-action="camera">Camera</button>
+        <button type="button" data-focus="weather">Weather</button>
+        <button type="button" data-focus="agenda">Agenda</button>
+        <button type="button" data-focus="news">News</button>
+        <button type="button" data-focus="health">Health</button>
+        <button type="button" data-focus="reminders">Reminders</button>
+        <button type="button" data-focus="routine">Routine</button>
+        <button type="button" data-focus="home">Home</button>
+        <button type="button" data-action="mirror">Mirror</button>
+        <button type="button" data-action="listen">Listen</button>
+        <button type="button" data-action="speak">Read Aloud</button>
+      </nav>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+
+  <script>
+    const camera = document.querySelector("#camera");
+    const cameraFallback = document.querySelector("#cameraFallback");
+    const timeEl = document.querySelector("#time");
+    const dateEl = document.querySelector("#date");
+    const commandTitle = document.querySelector("#commandTitle");
+    const commandText = document.querySelector("#commandText");
+    const assistantText = document.querySelector("#assistantText");
+    const toast = document.querySelector("#toast");
+    const focusButtons = document.querySelectorAll("[data-focus]");
+    const actionButtons = document.querySelectorAll("[data-action]");
+    const focusClasses = ["focus-weather", "focus-agenda", "focus-news", "focus-health", "focus-reminders", "focus-routine", "focus-home"];
+
+    const summaries = {
+      time: "",
+      weather: "Today is cloudy with a temperature of 22 degrees. Rain is expected later.",
+      agenda: "You have three events today. Your next event is HCI Class at 1 PM.",
+      news: "Here are today's top headlines: new AI tools launched, a morning run in Nairobi, and sports results today.",
+      health: "You have walked 3,200 steps and slept for 6 hours and 45 minutes.",
+      reminders: "You have three reminders today: submit HCI CAT, revise for ADS CAT, and charge laptop.",
+      routine: "Your next task is to pack your laptop.",
+      home: "Smart home controls are ready. Lights are on, fan is off, and the room temperature is 24 degrees.",
+      mirror: "Mirror mode: the time and date are the main display, with smart information around the edges."
+    };
+
+    const labels = {
+      weather: "Weather",
+      agenda: "Today's Agenda",
+      news: "Top News",
+      health: "Health",
+      reminders: "Reminders",
+      routine: "Morning Routine",
+      home: "Smart Home",
+      mirror: "Mirror ready"
+    };
+
+    const newsSummaries = {
+      "New AI tools launched": "New AI tools include agentic AI, significant legal battles between tech titans, and rapid industrial adoption of physical AI.",
+      "Country's updated morning run in Nairobi": "French President Emmanuel Macron and Kenyan marathon legend Eliud Kipchoge went for a morning run in Nairobi, Kenya.",
+      "Sports results today": "Sports update: Alonso is reported to become the new Chelsea coach."
+    };
+
+    let currentPanel = "mirror";
+    let waterGlasses = 4;
+    let moodIndex = 0;
+    const moods = ["Good", "Focused", "Tired", "Happy"];
+
+    let toastTimer;
+    let recognition;
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 3200);
+    }
+
+    function speak(message) {
+      if (!("speechSynthesis" in window)) {
+        showToast("Speech output is not supported in this browser.");
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function updateClock() {
+      const now = new Date();
+      timeEl.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      dateEl.textContent = now.toLocaleDateString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      });
+      summaries.time = `It is ${timeEl.textContent}.`;
+
+      if (currentPanel === "mirror") {
+        commandTitle.innerHTML = `<span class="default-time">${timeEl.textContent}</span>`;
+        commandText.innerHTML = `<span class="default-date">${dateEl.textContent}</span>`;
+      }
+    }
+
+    function setFocus(panel) {
+      currentPanel = panel || "mirror";
+      document.body.classList.remove(...focusClasses);
+      focusButtons.forEach((button) => button.classList.toggle("active", button.dataset.focus === panel));
+
+      if (panel && panel !== "mirror") {
+        document.body.classList.add(`focus-${panel}`);
+        commandTitle.textContent = labels[panel];
+        commandText.textContent = summaries[panel];
+        assistantText.textContent = `Showing ${panel}. Say "mirror" to return to the full smart mirror.`;
+        return;
+      }
+
+      commandTitle.textContent = labels.mirror;
+      updateClock();
+      assistantText.textContent = "All smart mirror panels are visible. Tap a panel or speak a command.";
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast("Camera access is not supported in this browser.");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false
+        });
+        camera.srcObject = stream;
+        cameraFallback.classList.add("hidden");
+        showToast("Camera started. The video is flipped to behave like a mirror.");
+      } catch (error) {
+        showToast("Camera permission was blocked or no camera was found.");
+      }
+    }
+
+    function handleCommand(rawCommand) {
+      const command = rawCommand.toLowerCase();
+      const matched = ["weather", "agenda", "calendar", "news", "health", "reminders", "routine"].find((keyword) => command.includes(keyword));
+
+      if (matched) {
+        const panel = matched === "calendar" ? "agenda" : matched;
+        setFocus(panel);
+        speak(summaries[panel]);
+        return;
+      }
+
+      if (command.includes("what time") || command.includes("time is it")) {
+        setFocus("mirror");
+        speak(summaries.time);
+        return;
+      }
+
+      if (command.includes("home") || command.includes("lights") || command.includes("fan")) {
+        setFocus("home");
+        if (command.includes("turn on the lights") || command.includes("lights on")) {
+          setDevice("Lights", "ON");
+          speak("Turning on the lights.");
+        } else if (command.includes("turn off the fan") || command.includes("fan off")) {
+          setDevice("Fan", "OFF");
+          speak("Turning off the fan.");
+        } else {
+          speak(summaries.home);
+        }
+        return;
+      }
+
+      if (command.includes("mirror") || command.includes("show all")) {
+        setFocus("mirror");
+        speak(summaries.mirror);
+        return;
+      }
+
+      if (command.includes("read") || command.includes("speak")) {
+        speak(commandText.textContent);
+        return;
+      }
+
+      showToast(`Command heard: ${rawCommand}`);
+      speak("I heard you, but I do not have that mirror command yet.");
+    }
+
+    function setDevice(device, state) {
+      const button = [...document.querySelectorAll("[data-device]")].find((item) => item.dataset.device === device);
+      if (button) button.querySelector("b").textContent = state;
+    }
+
+    function startListening() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        showToast("Speech recognition is not supported in this browser. Try Chrome or Edge.");
+        return;
+      }
+
+      if (!recognition) {
+        recognition = new SpeechRecognition();
+        recognition.lang = "en-US";
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        recognition.addEventListener("result", (event) => {
+          const command = event.results[0][0].transcript;
+          assistantText.textContent = `Voice command: "${command}"`;
+          handleCommand(command);
+        });
+        recognition.addEventListener("end", () => {
+          document.querySelector("[data-action='listen']").classList.remove("active");
+        });
+        recognition.addEventListener("error", () => {
+          showToast("The mirror could not hear a command clearly.");
+        });
+      }
+
+      document.querySelector("[data-action='listen']").classList.add("active");
+      showToast("Listening for a voice command.");
+      recognition.start();
+    }
+
+    focusButtons.forEach((button) => {
+      button.addEventListener("click", () => setFocus(button.dataset.focus));
+    });
+
+    document.querySelectorAll(".headline").forEach((button) => {
+      button.addEventListener("click", () => {
+        setFocus("news");
+        commandText.textContent = newsSummaries[button.textContent] || summaries.news;
+        speak(commandText.textContent);
+      });
+    });
+
+    document.querySelectorAll(".reminders .task").forEach((button) => {
+      button.addEventListener("click", () => {
+        button.classList.toggle("complete");
+        showToast(button.classList.contains("complete") ? "Reminder marked complete." : "Reminder reopened.");
+      });
+    });
+
+    document.querySelectorAll("[data-health]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (button.dataset.health === "water") {
+          waterGlasses = Math.min(8, waterGlasses + 1);
+          document.querySelector("#waterCount").textContent = `${waterGlasses} / 8`;
+          showToast(`Water updated to ${waterGlasses} of 8 glasses.`);
+        }
+        if (button.dataset.health === "mood") {
+          moodIndex = (moodIndex + 1) % moods.length;
+          document.querySelector("#moodValue").textContent = moods[moodIndex];
+          showToast(`Mood changed to ${moods[moodIndex]}.`);
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-device]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const value = button.querySelector("b");
+        value.textContent = value.textContent === "ON" ? "OFF" : "ON";
+        showToast(`${button.dataset.device} switched ${value.textContent}.`);
+      });
+    });
+
+    actionButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const action = button.dataset.action;
+        if (action === "camera") startCamera();
+        if (action === "mirror") setFocus("mirror");
+        if (action === "listen") startListening();
+        if (action === "speak") speak(commandText.textContent);
+      });
+    });
+
+    updateClock();
+    setInterval(updateClock, 1000);
+    setFocus("mirror");
+    startCamera();
+  </script>
+</body>
+</html>
